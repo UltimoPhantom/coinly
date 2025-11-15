@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Users, Plus, X, Trash2, Undo2, Lock, Edit2, Save, Calculator } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, Plus, X, Trash2, Undo2, Lock, Edit2, Save, Calculator, ChevronDown } from 'lucide-react';
 
 export default function Home() {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState('');
   const [amount, setAmount] = useState('');
   const [location, setLocation] = useState('');
+  const [selectedPeople, setSelectedPeople] = useState([]);
+  const [showPeopleDropdown, setShowPeopleDropdown] = useState(false);
   const [expenses, setExpenses] = useState([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -39,7 +41,6 @@ export default function Home() {
     fetchUsers();
     fetchExpenses();
     
-    // Load saved user preference
     const savedUser = localStorage.getItem('selectedUser');
     if (savedUser) {
       setSelectedUser(savedUser);
@@ -52,6 +53,12 @@ export default function Home() {
       localStorage.removeItem('selectedUser');
     }
   }, [users, selectedUser]);
+
+  useEffect(() => {
+    if (users.length > 0) {
+      setSelectedPeople(users);
+    }
+  }, [users]);
 
   useEffect(() => {
     if (showUndoButton) {
@@ -90,9 +97,28 @@ export default function Home() {
     localStorage.setItem('selectedUser', user);
   };
 
+  const togglePersonPresent = (person) => {
+    setSelectedPeople(prev => 
+      prev.includes(person)
+        ? prev.filter(p => p !== person)
+        : [...prev, person]
+    );
+  };
+
+  const selectAllPeople = () => {
+    setSelectedPeople(users);
+  };
+
+  const deselectAllPeople = () => {
+    setSelectedPeople([]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedUser || !amount || !location) return;
+    if (!selectedUser || !amount || !location || selectedPeople.length === 0) {
+      alert('Please fill all fields and select at least one person');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -103,7 +129,7 @@ export default function Home() {
           addedBy: selectedUser,
           amount: parseFloat(amount),
           location,
-          usersPresent: users,
+          usersPresent: selectedPeople,
           payDone: false
         })
       });
@@ -111,6 +137,7 @@ export default function Home() {
       if (res.ok) {
         setAmount('');
         setLocation('');
+        setSelectedPeople(users);
         fetchExpenses();
       }
     } catch (error) {
@@ -286,14 +313,9 @@ export default function Home() {
   };
 
   const calculateBalances = (user) => {
-    // Filter out expenses marked as payDone
     const activeExpenses = expenses.filter(exp => !exp.payDone);
-    
-    // Calculate what user owes to others
-    const owes = {}; // { personName: amount }
-    
-    // Calculate what others owe to user
-    const owedBy = {}; // { personName: amount }
+    const owes = {};
+    const owedBy = {};
 
     activeExpenses.forEach(expense => {
       const paidBy = expense.addedBy;
@@ -304,17 +326,13 @@ export default function Home() {
       
       const sharePerPerson = totalAmount / peoplePresent.length;
       
-      // If user was present in this expense
       if (peoplePresent.includes(user)) {
-        // User owes their share to the person who paid
         if (paidBy !== user) {
           owes[paidBy] = (owes[paidBy] || 0) + sharePerPerson;
         }
       }
       
-      // If user paid for this expense
       if (paidBy === user) {
-        // Each person present owes user their share
         peoplePresent.forEach(person => {
           if (person !== user) {
             owedBy[person] = (owedBy[person] || 0) + sharePerPerson;
@@ -323,10 +341,7 @@ export default function Home() {
       }
     });
 
-    // Net balances (settling mutual debts)
     const netBalances = {};
-    
-    // Calculate net amounts
     const allPeople = new Set([...Object.keys(owes), ...Object.keys(owedBy)]);
     
     allPeople.forEach(person => {
@@ -334,12 +349,11 @@ export default function Home() {
       const personOwesToUser = owedBy[person] || 0;
       const netAmount = personOwesToUser - userOwesToPerson;
       
-      if (Math.abs(netAmount) > 0.01) { // Ignore very small amounts due to rounding
+      if (Math.abs(netAmount) > 0.01) {
         netBalances[person] = netAmount;
       }
     });
 
-    // Separate into what user owes and what user should receive
     const finalOwes = {};
     const finalReceives = {};
     
@@ -351,7 +365,6 @@ export default function Home() {
       }
     });
 
-    // Get all expenses where user was involved (not paid done)
     const userExpenses = activeExpenses.filter(exp => 
       exp.usersPresent?.includes(user) || exp.addedBy === user
     );
@@ -384,7 +397,7 @@ export default function Home() {
     }
   };
 
-  const balanceData = balanceUser ? calculateBalances(balanceUser) : null;
+  const balanceData = balanceUser && balanceUser !== '__SUMMARY__' ? calculateBalances(balanceUser) : null;
 
   const groupByDate = (expenses) => {
     const grouped = {};
@@ -403,7 +416,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 p-4 pb-8">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-6 mb-4 sm:mb-6">
           <div className="flex justify-between items-center mb-4 sm:mb-6">
             <h1 className="text-2xl sm:text-3xl font-bold text-white">Expense Tracker</h1>
@@ -425,11 +437,10 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Add Expense Form */}
           <div className="space-y-3 sm:space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Who r u?
+                Who paid?
               </label>
               <select
                 value={selectedUser}
@@ -474,9 +485,61 @@ export default function Home() {
               />
             </div>
 
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Who was there? ({selectedPeople.length} selected)
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowPeopleDropdown(!showPeopleDropdown)}
+                className="w-full px-3 sm:px-4 py-3 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-base flex items-center justify-between"
+              >
+                <span className="truncate">
+                  {selectedPeople.length === 0 ? 'Select people...' : 
+                   selectedPeople.length === users.length ? 'Everyone' :
+                   selectedPeople.join(', ')}
+                </span>
+                <ChevronDown className={`w-5 h-5 transition-transform ${showPeopleDropdown ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {showPeopleDropdown && (
+                <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  <div className="sticky top-0 bg-gray-700 border-b border-gray-600 p-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllPeople}
+                      className="flex-1 text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deselectAllPeople}
+                      className="flex-1 text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="p-2">
+                    {users.map(user => (
+                      <label key={user} className="flex items-center gap-2 p-2 hover:bg-gray-600 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedPeople.includes(user)}
+                          onChange={() => togglePersonPresent(user)}
+                          className="w-4 h-4 text-indigo-600 bg-gray-600 border-gray-500 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-sm text-white">{user}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={handleSubmit}
-              disabled={submitting || !selectedUser || !amount || !location}
+              disabled={submitting || !selectedUser || !amount || !location || selectedPeople.length === 0}
               className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-98"
             >
               <Plus className="w-5 h-5" />
@@ -485,7 +548,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Expenses List */}
         <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-6">
           <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Recent Expenses</h2>
           
@@ -510,13 +572,16 @@ export default function Home() {
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <div className="font-semibold text-white text-sm sm:text-base flex items-center gap-2">
+                            <div className="font-semibold text-white text-sm sm:text-base flex items-center gap-2 flex-wrap">
                               {exp.addedBy}
                               {exp.payDone && (
                                 <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded">
                                   Settled
                                 </span>
                               )}
+                              <span className="text-xs text-gray-400">
+                                for {exp.usersPresent?.length || 0} people
+                              </span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -542,8 +607,11 @@ export default function Home() {
                         <div className="text-sm sm:text-base text-gray-300 mb-1 break-words">
                           {exp.location}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(exp.timestamp).toLocaleTimeString()}
+                        <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                          <span>{new Date(exp.timestamp).toLocaleTimeString()}</span>
+                          {exp.usersPresent && exp.usersPresent.length > 0 && (
+                            <span className="text-gray-400">• {exp.usersPresent.join(', ')}</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -551,7 +619,6 @@ export default function Home() {
                 </div>
               ))}
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-4 mt-6">
                   <button
@@ -578,8 +645,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Balance Modal */}
-      {/* Balance Modal */}
       {showBalanceModal && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 sm:p-6 max-w-2xl w-full my-8 max-h-[90vh] overflow-y-auto">
@@ -597,18 +662,14 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Summary Button */}
             <button
-              onClick={() => {
-                setBalanceUser('__SUMMARY__');
-              }}
+              onClick={() => setBalanceUser('__SUMMARY__')}
               className="w-full mb-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-indigo-700 transition active:scale-98 flex items-center justify-center gap-2"
             >
               <Calculator className="w-5 h-5" />
               View Everyone's Summary
             </button>
 
-            {/* User Selection */}
             {!balanceUser && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -636,7 +697,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Everyone's Summary */}
             {balanceUser === '__SUMMARY__' && (
               <div className="space-y-4">
                 <h4 className="text-xl font-bold text-white mb-4">Everyone's Balance Summary</h4>
@@ -713,10 +773,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* Individual User Balance (existing code) */}
             {balanceUser && balanceUser !== '__SUMMARY__' && balanceData && (
               <div className="space-y-4">
-                {/* Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-red-900 bg-opacity-30 border border-red-700 rounded-lg p-4">
                     <div className="text-sm text-red-300 mb-1">Total You Owe</div>
@@ -732,7 +790,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Net Balance */}
                 <div className={`${
                   balanceData.totalReceivable - balanceData.totalOwed >= 0 
                     ? 'bg-green-900 bg-opacity-30 border-green-700' 
@@ -749,7 +806,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* What You Owe */}
                 {Object.keys(balanceData.owes).length > 0 && (
                   <div>
                     <h4 className="text-lg font-semibold text-red-400 mb-2">You Owe:</h4>
@@ -764,7 +820,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* What You'll Receive */}
                 {Object.keys(balanceData.receives).length > 0 && (
                   <div>
                     <h4 className="text-lg font-semibold text-green-400 mb-2">You'll Receive:</h4>
@@ -779,7 +834,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* All Related Expenses */}
                 <div>
                   <h4 className="text-lg font-semibold text-white mb-2">Your Expenses ({balanceData.expenses.length})</h4>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -834,7 +888,6 @@ export default function Home() {
         </div>
       )}
       
-      {/* Edit Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 sm:p-6 max-w-md w-full my-8">
@@ -851,234 +904,230 @@ export default function Home() {
               </button>
             </div>
             <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Who Paid
-            </label>
-            <select
-              value={editForm.addedBy}
-              onChange={(e) => setEditForm({ ...editForm, addedBy: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Choose...</option>
-              {users.map(user => (
-                <option key={user} value={user}>{user}</option>
-              ))}
-            </select>
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Who Paid
+                </label>
+                <select
+                  value={editForm.addedBy}
+                  onChange={(e) => setEditForm({ ...editForm, addedBy: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Choose...</option>
+                  {users.map(user => (
+                    <option key={user} value={user}>{user}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Amount
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={editForm.amount}
-              onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Amount
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Spent Where
-            </label>
-            <input
-              type="text"
-              value={editForm.location}
-              onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Spent Where
+                </label>
+                <input
+                  type="text"
+                  value={editForm.location}
+                  onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              People Present
-            </label>
-            <div className="space-y-2 max-h-40 overflow-y-auto bg-gray-700 p-3 rounded-lg border border-gray-600">
-              {users.map(user => (
-                <label key={user} className="flex items-center gap-2 cursor-pointer">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  People Present
+                </label>
+                <div className="space-y-2 max-h-40 overflow-y-auto bg-gray-700 p-3 rounded-lg border border-gray-600">
+                  {users.map(user => (
+                    <label key={user} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editForm.usersPresent.includes(user)}
+                        onChange={() => toggleUserPresent(user)}
+                        className="w-4 h-4 text-indigo-600 bg-gray-600 border-gray-500 rounded focus:ring-indigo-500"
+                      />
+                      <span className="text-sm text-white">{user}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={editForm.usersPresent.includes(user)}
-                    onChange={() => toggleUserPresent(user)}
-                    className="w-4 h-4 text-indigo-600 bg-gray-600 border-gray-500 rounded focus:ring-indigo-500"
+                    checked={editForm.payDone}
+                    onChange={(e) => setEditForm({ ...editForm, payDone: e.target.checked })}
+                    className="w-4 h-4 text-green-600 bg-gray-600 border-gray-500 rounded focus:ring-green-500"
                   />
-                  <span className="text-sm text-white">{user}</span>
+                  <span className="text-sm text-gray-300">Pay Done?</span>
+                  <span className="text-xs text-gray-500">(Won't be counted in balance calculations)</span>
                 </label>
-              ))}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Password (CHAKKESH)
+                </label>
+                <input
+                  type="password"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  onKeyPress={(e) => e.key === 'Enter' && handleEditSubmit()}
+                  placeholder="Enter password"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={handleEditSubmit}
+                  className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingExpense(null);
+                  }}
+                  className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 active:scale-95"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
+        </div>
+      )}
 
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={editForm.payDone}
-                onChange={(e) => setEditForm({ ...editForm, payDone: e.target.checked })}
-                className="w-4 h-4 text-green-600 bg-gray-600 border-gray-500 rounded focus:ring-green-500"
-              />
-              <span className="text-sm text-gray-300">Pay Done?</span>
-              <span className="text-xs text-gray-500">(Won't be counted in balance calculations)</span>
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Password (CHAKKESH)
-            </label>
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 max-w-sm w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <Lock className="w-6 h-6 text-indigo-400" />
+              <h3 className="text-xl font-bold text-white">Enter Password</h3>
+            </div>
             <input
               type="password"
-              value={editForm.password}
-              onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-              onKeyPress={(e) => e.key === 'Enter' && handleEditSubmit()}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
               placeholder="Enter password"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500 mb-4"
+              autoFocus
             />
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={handleEditSubmit}
-              className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 active:scale-95 flex items-center justify-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              Save Changes
-            </button>
-            <button
-              onClick={() => {
-                setShowEditModal(false);
-                setEditingExpense(null);
-              }}
-              className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 active:scale-95"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )}
-
-  {/* Password Modal (for user management) */}
-  {showPasswordModal && (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 max-w-sm w-full">
-        <div className="flex items-center gap-3 mb-4">
-          <Lock className="w-6 h-6 text-indigo-400" />
-          <h3 className="text-xl font-bold text-white">Enter Password</h3>
-        </div>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-          placeholder="Enter password"
-          className="w-full px-4 py-3 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500 mb-4"
-          autoFocus
-        />
-        <div className="flex gap-2">
-          <button
-            onClick={handlePasswordSubmit}
-            className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 active:scale-95"
-          >
-            Submit
-          </button>
-          <button
-            onClick={() => {
-              setShowPasswordModal(false);
-              setPendingAction(null);
-              setPassword('');
-            }}
-            className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 active:scale-95"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-
-  {/* User Management Modal */}
-  {showUserModal && (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg sm:text-xl font-bold text-white">Manage Users</h3>
-          <button
-            onClick={() => setShowUserModal(false)}
-            className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
-        <div className="space-y-2 mb-4">
-          {users.map((user, idx) => (
-            <div key={idx} className="flex justify-between items-center p-3 bg-gray-700 border border-gray-600 rounded-lg">
-              <span className="text-sm sm:text-base text-white">{user}</span>
+            <div className="flex gap-2">
               <button
-                onClick={() => requestPasswordAction({ type: 'remove', userName: user })}
-                className="text-red-400 text-xs sm:text-sm px-3 py-1 hover:bg-red-600 hover:text-white rounded active:scale-95 transition"
+                onClick={handlePasswordSubmit}
+                className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 active:scale-95"
               >
-                Remove
+                Submit
+              </button>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPendingAction(null);
+                  setPassword('');
+                }}
+                className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 active:scale-95"
+              >
+                Cancel
               </button>
             </div>
-          ))}
+          </div>
         </div>
+      )}
 
-        <div className="flex gap-2 mb-2">
-          <input
-            type="text"
-            value={newUserName}
-            onChange={(e) => setNewUserName(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && newUserName.trim()) {
-                requestPasswordAction({ type: 'add' });
-              }
-            }}
-            placeholder="New user name"
-            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500 text-base"
-          />
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg sm:text-xl font-bold text-white">Manage Users</h3>
+              <button
+                onClick={() => setShowUserModal(false)}
+                className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-2 mb-4">
+              {users.map((user, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 bg-gray-700 border border-gray-600 rounded-lg">
+                  <span className="text-sm sm:text-base text-white">{user}</span>
+                  <button
+                    onClick={() => requestPasswordAction({ type: 'remove', userName: user })}
+                    className="text-red-400 text-xs sm:text-sm px-3 py-1 hover:bg-red-600 hover:text-white rounded active:scale-95 transition"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && newUserName.trim()) {
+                    requestPasswordAction({ type: 'add' });
+                  }
+                }}
+                placeholder="New user name"
+                className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-indigo-500 text-base"
+              />
+              <button
+                onClick={() => requestPasswordAction({ type: 'add' })}
+                disabled={!newUserName.trim()}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowUserModal(false)}
+              className="w-full bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 active:scale-95"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showDeletePopup && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-2xl z-50 animate-bounce">
+          Delete kyu kiya bosadi! 😤
+        </div>
+      )}
+
+      {showUndoButton && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
           <button
-            onClick={() => requestPasswordAction({ type: 'add' })}
-            disabled={!newUserName.trim()}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleUndo}
+            className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg shadow-2xl flex items-center gap-2 active:scale-95 transition"
           >
-            Add
+            <Undo2 className="w-5 h-5" />
+            Undo Delete
           </button>
         </div>
-
-        <button
-          onClick={() => setShowUserModal(false)}
-          className="w-full bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 active:scale-95"
-        >
-          Close
-        </button>
-      </div>
+      )}
     </div>
-  )}
-
-  {/* Delete Popup */}
-  {showDeletePopup && (
-    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-2xl z-50 animate-bounce">
-      Delete kyu kiya bosadi! 😤
-    </div>
-  )}
-
-  {/* Undo Button */}
-  {showUndoButton && (
-    <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
-      <button
-        onClick={handleUndo}
-        className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg shadow-2xl flex items-center gap-2 active:scale-95 transition"
-      >
-        <Undo2 className="w-5 h-5" />
-        Undo Delete
-      </button>
-    </div>
-  )}
-</div>
-);
+  );
 }
