@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { addedBy, amount, location, usersPresent } = body;
+    const { addedBy, amount, location, usersPresent, payDone } = body;
 
     if (!addedBy || !amount || !location) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -41,6 +41,7 @@ export async function POST(request) {
       amount: parseFloat(amount),
       location,
       usersPresent: usersPresent || [],
+      payDone: payDone || false,
       timestamp: new Date().toISOString(),
       ip,
       createdAt: new Date()
@@ -58,7 +59,7 @@ export async function POST(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { id, addedBy, amount, location, usersPresent } = body;
+    const { id, addedBy, amount, location, usersPresent, payDone } = body;
 
     if (!id || !addedBy || !amount || !location) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -75,36 +76,40 @@ export async function PUT(request) {
           amount: parseFloat(amount),
           location,
           usersPresent: usersPresent || [],
+          payDone: payDone || false,
           updatedAt: new Date()
         }
       }
     );
 
     if (result.matchedCount === 0) {
-      return NextResponse.json({ error:'Expense not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Expense not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error updating expense:', error);
+    return NextResponse.json({ error: 'Failed to update expense' }, { status: 500 });
+  }
 }
-return NextResponse.json({ success: true });
-} catch (error) {
-console.error('Error updating expense:', error);
-return NextResponse.json({ error: 'Failed to update expense' }, { status: 500 });
-}
-}
+
 export async function DELETE(request) {
-try {
-const body = await request.json();
-const { id } = body;
-if (!id) {
-  return NextResponse.json({ error: 'ID is required' }, { status: 400 });
-}
+  try {
+    const body = await request.json();
+    const { id } = body;
 
-const client = await clientPromise;
-const db = client.db('expense-tracker');
+    if (!id) {
+      return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    }
 
-await db.collection('expenses').deleteOne({ _id: new ObjectId(id) });
+    const client = await clientPromise;
+    const db = client.db('expense-tracker');
 
-return NextResponse.json({ success: true });
-} catch (error) {
-console.error('Error deleting expense:', error);
-return NextResponse.json({ error: 'Failed to delete expense' }, { status: 500 });
-}
+    await db.collection('expenses').deleteOne({ _id: new ObjectId(id) });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting expense:', error);
+    return NextResponse.json({ error: 'Failed to delete expense' }, { status: 500 });
+  }
 }
