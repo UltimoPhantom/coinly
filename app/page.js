@@ -979,7 +979,7 @@ export default function Home() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Password (CHAKKESH)
+                  Password (admin (Tejas)) only)
                 </label>
                 <input
                   type="password"
