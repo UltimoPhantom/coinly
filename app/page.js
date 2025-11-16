@@ -418,7 +418,7 @@ export default function Home() {
       <div className="max-w-2xl mx-auto">
         <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-6 mb-4 sm:mb-6">
           <div className="flex justify-between items-center mb-4 sm:mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">Expense Tracker</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Expense Tracker Mysuru</h1>
             <div className="flex gap-2">
               <button
                 onClick={openBalanceModal}

@@ -1,8 +1,8 @@
 import './globals.css'
 
 export const metadata = {
-  title: 'Expense Tracker',
-  description: 'Track expenses with friends',
+  title: 'Expense Tracker Mysuru',
+  description: 'Track expenses with your gandu friends',
   viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
 }
 
